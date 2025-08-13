@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Lock, Mail, User, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import SocialAuth from './SocialAuth';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -140,6 +141,10 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </button>
           </form>
 
+          <div className="mt-6">
+            <SocialAuth mode={isLogin ? 'login' : 'register'} />
+          </div>
+
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               {isLogin ? "Don't have an account?" : 'Already have an account?'}
@@ -155,7 +160,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           {isLogin && (
             <div className="mt-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
               <p className="font-medium">Demo Credentials:</p>
-              <p>Admin: admin@giftshop.com / password</p>
+              <p>Admin: admin@example.com / password</p>
               <p>User: user@example.com / password</p>
             </div>
           )}

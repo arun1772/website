@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '../types';
+import { authAPI } from '../services/api';
+import socketService from '../services/socket';
 
 interface AuthContextType {
   user: User | null;
@@ -12,84 +14,145 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const DEMO_USERS: User[] = [
-  {
-    id: '1',
-    name: 'Admin User',
-    email: 'admin@giftshop.com',
-    role: 'admin',
-    avatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=1',
-    phone: '+91 9876543210',
-    address: '123 Admin Street, City, State 12345'
-  },
-  {
-    id: '2',
-    name: 'John Doe',
-    email: 'user@example.com',
-    role: 'user',
-    avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=1',
-    phone: '+91 9876543211',
-    address: '456 User Avenue, City, State 67890'
-  }
-];
-
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    const initAuth = async () => {
+      const token = localStorage.getItem('token');
+      const savedUser = localStorage.getItem('currentUser');
+      
+      if (token && savedUser) {
+        try {
+          // Verify token with server
+          const response = await authAPI.getMe();
+          if (response.success) {
+            const userData = response.user;
+            setUser({
+              id: userData.id,
+              name: userData.name,
+              email: userData.email,
+              role: userData.role,
+              avatar: userData.avatar,
+              phone: userData.phone,
+              address: userData.address
+            });
+            
+            // Connect to socket and join user room
+            socketService.connect();
+            socketService.joinUserRoom(userData.id);
+            
+            if (userData.role === 'admin') {
+              socketService.joinAdminRoom();
+            }
+          }
+        } catch (error) {
+          console.error('Auth verification failed:', error);
+          localStorage.removeItem('token');
+          localStorage.removeItem('currentUser');
+        }
+      }
+      setIsLoading(false);
+    };
+
+    initAuth();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const foundUser = DEMO_USERS.find(u => u.email === email);
-    if (foundUser && password === 'password') {
-      setUser(foundUser);
-      localStorage.setItem('currentUser', JSON.stringify(foundUser));
-      setIsLoading(false);
-      return true;
+    try {
+      const response = await authAPI.login(email, password);
+      if (response.success) {
+        const userData = response.user;
+        setUser({
+          id: userData.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          avatar: userData.avatar,
+          phone: userData.phone,
+          address: userData.address
+        });
+        
+        // Connect to socket and join user room
+        socketService.connect();
+        socketService.joinUserRoom(userData.id);
+        
+        if (userData.role === 'admin') {
+          socketService.joinAdminRoom();
+        }
+        
+        setIsLoading(false);
+        return true;
+      }
+    } catch (error) {
+      console.error('Login failed:', error);
     }
-    
     setIsLoading(false);
     return false;
   };
 
   const register = async (name: string, email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    const newUser: User = {
-      id: Date.now().toString(),
-      name,
-      email,
-      role: 'user',
-      avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=100&h=100&dpr=1'
-    };
-    
-    setUser(newUser);
-    localStorage.setItem('currentUser', JSON.stringify(newUser));
+    try {
+      const response = await authAPI.register(name, email, password);
+      if (response.success) {
+        const userData = response.user;
+        setUser({
+          id: userData.id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          avatar: userData.avatar,
+          phone: userData.phone,
+          address: userData.address
+        });
+        
+        // Connect to socket and join user room
+        socketService.connect();
+        socketService.joinUserRoom(userData.id);
+        
+        setIsLoading(false);
+        return true;
+      }
+    } catch (error) {
+      console.error('Registration failed:', error);
+    }
     setIsLoading(false);
-    return true;
+    return false;
   };
 
-  const updateProfile = (updates: Partial<User>) => {
+  const updateProfile = async (updates: Partial<User>) => {
     if (user) {
-      const updatedUser = { ...user, ...updates };
-      setUser(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      try {
+        const response = await authAPI.updateProfile(updates);
+        if (response.success) {
+          const userData = response.user;
+          setUser({
+            id: userData.id,
+            name: userData.name,
+            email: userData.email,
+            role: userData.role,
+            avatar: userData.avatar,
+            phone: userData.phone,
+            address: userData.address
+          });
+        }
+      } catch (error) {
+        console.error('Profile update failed:', error);
+      }
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
     setUser(null);
-    localStorage.removeItem('currentUser');
+    socketService.disconnect();
   };
 
   return (
